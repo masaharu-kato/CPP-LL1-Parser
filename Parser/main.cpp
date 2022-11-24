@@ -99,12 +99,12 @@ public:
     }
 };
 
-
-int main() {
-    //string str = "1+2-41+23=421|1324&123>95*6/(10-7)";
-    string str = "5*1-5+(120+3)/10-5,32*6,32+1*(10+7)";
-    //string str = "1+2+3+4";
-    Parser parser = {str};
-    cout << str << " = " << parser.parse() << endl;
-    return 0;
-}
+//
+//int main() {
+//    //string str = "1+2-41+23=421|1324&123>95*6/(10-7)";
+//    string str = "5*1-5+(120+3)/10-5,32*6,32+1*(10+7)";
+//    //string str = "1+2+3+4";
+//    Parser parser = {str};
+//    cout << str << " = " << parser.parse() << endl;
+//    return 0;
+//}
