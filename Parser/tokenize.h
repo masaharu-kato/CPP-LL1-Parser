@@ -7,15 +7,42 @@
 constexpr int NCHAR = 256;
 using uchar = unsigned char;
 
+template<typename T, typename... Ts>
+constexpr auto _sum(T&& t, Ts&&... ts) { return (std::forward<T>(t) + ... + std::forward<Ts>(ts)); }
+
 template <typename T, typename ...Args>
 constexpr auto _make_array(Args&&... args)
 {
 	return std::array<T, sizeof...(Args)>{args...};
 }
+
+template <typename T, int L1, int L2>
+constexpr std::array<T, L1 + L2> _concat_array(std::array<T, L1> a1, std::array<T, L2> a2) {
+	std::array<T, L1+L2> a12{};
+	int i = 0;
+	for(auto v: a1) a12[i++] = v;
+	for(auto v: a2) a12[i++] = v;
+	return a12;
+}
+
+template <typename T, int L>
+constexpr std::array<T, L> _concat_array(std::array<T, L> a) {
+	return a;
+}
+
+template <typename T, int L1, int L2, int... Ls>
+constexpr std::array<T, _sum(L1, L2, Ls...)> _concat_array(std::array<T, L1> a1, std::array<T, L2> a2, std::array<T, Ls>... arrs) {
+	return _concat_array(_concat_array(a1, a2), arrs...);
+}
+
+
 template <typename ...Args>
-constexpr auto _chars(Args&&... args)
-{
-	return std::array<uchar, sizeof...(Args)>{(uchar)args...};
+constexpr std::array<uchar, sizeof...(Args)> _chars(Args... args) {
+	return {(uchar)args...};
+}
+
+constexpr std::array<uchar, 1> _char(uchar ch) {
+	return {ch};
 }
 
 template <uchar CB, uchar CE>
@@ -25,14 +52,30 @@ constexpr auto _chars_range() {
 	return chars;
 }
 
-template <typename T, int L1, int L2>
-constexpr std::array<T, L1+L2> _concat_array(std::array<T, L1> a1, std::array<T, L2> a2) {
-	std::array<T, L1+L2> a12{};
-	int i = 0;
-	for(auto v: a1) a12[i++] = v;
-	for(auto v: a2) a12[i++] = v;
-	return a12;
-}
+//constexpr std::array<uchar, NCHAR> _all_chars() {
+//	return _chars_range<0, NCHAR-1>();
+//}
+//
+//template <int L1, int L2>
+//constexpr std::array<uchar, L1 - L2> _minus_chars(std::array<uchar, L1> chs1, std::array<uchar, L2> chs2) {
+//	const std::array<uchar, L1 - L2> res;
+//	int i = 0;
+//	for (uchar ch1: chs1) {
+//		bool except = false;
+//		for (uchar ch2 : chs2) {
+//			if(ch1 == ch2) { except = true; break; }
+//		}
+//		if(!except) res[i++] = ch1;
+//	}
+//	return res;
+//}
+//
+//template <int L>
+//constexpr std::array<uchar, NCHAR - L> _not_chars(std::array<uchar, L> chs) {
+//	return _minus_chars(_all_chars(), chs);
+//}
+
+
 
 //struct Pattern {
 //	const char* name = nullptr;
@@ -86,40 +129,26 @@ struct Pattern {
 };
 
 template <int L>
-constexpr Pattern<1> one(std::array<uchar, L> chars) {
+constexpr Pattern<1> _pattern(std::array<uchar, L> chars) {
 	CharMap cm = _charmap(CMAP_NOT);
 	for (char ch : chars) cm[ch] = CMAP_LAST;
 	return {{cm}};
 }
 
-template <int L>
-constexpr Pattern<1> opt_single(std::array<uchar, L> chars) {
-	CharMap cm = _charmap(CMAP_END);
-	for (char ch : chars) cm[ch] = CMAP_LAST;
-	return {{cm}};
+template <typename ...Args>
+constexpr Pattern<1> chars(Args... args) {
+	return _pattern(_chars(args...));
 }
 
-//template <int L>
-//struct Repeat : Pattern {
-//	const std::array<uchar, L> chars;
-//	constexpr Repeat(const std::array<uchar, L> chars)
-//		: chars(chars), Pattern{name} {}
-//};
-template <int L>
-constexpr Pattern<2> repeat(std::array<uchar, L> chars) {
-	CharMap cm1 = _charmap(CMAP_NOT);
-	for (char ch : chars) cm1[ch] = 1;
-	CharMap cm2 = _charmap(CMAP_END);
-	for (char ch : chars) cm2[ch] = 1;
-	return {{cm1, cm2}};
+constexpr Pattern<1> char_(uchar ch) {
+	return _pattern(_char(ch));
 }
 
-template <int L>
-constexpr Pattern<1> opt_repeat(std::array<uchar, L> chars) {
-	CharMap cm = _charmap(CMAP_END);
-	for (char ch : chars) cm[ch] = 0;
-	return {{cm}};
+template <uchar CB, uchar CE>
+constexpr Pattern<1> chars_range() {
+	return _pattern(_chars_range<CB, CE>());
 }
+
 
 template <int L1, int L2>
 constexpr std::array<CharMap, L2> _shift(std::array<CharMap, L2> cmap) {
@@ -157,19 +186,13 @@ constexpr std::array<CharMap, L2> _shift(std::array<CharMap, L2> cmap) {
 //	return {single(v0)};
 //}
 
-template <typename... Ts>
-constexpr auto concat(Ts... vs) {
-	//return _concat(to_paterns(vs...)...);
-	return _concat(vs...);
-}
-
 template <int L1, int L2, int... Ls>
-constexpr auto _concat(Pattern<L1> pat1, Pattern<L2> pat2, Pattern<Ls>... pats) {
-	return _concat(_concat(pat1, pat2), pats...);
+constexpr auto concat(Pattern<L1> pat1, Pattern<L2> pat2, Pattern<Ls>... pats) {
+	return concat(concat(pat1, pat2), pats...);
 }
 
 template <int L1, int L2>
-constexpr Pattern<L1+L2> _concat(/* copy */ Pattern<L1> cms1, /* copy */ Pattern<L2> cms2) {
+constexpr Pattern<L1+L2> concat(/* copy */ Pattern<L1> cms1, /* copy */ Pattern<L2> cms2) {
 	for (CharMap& cm : cms1.cmap) {
 		for(int i=0; i<NCHAR; ++i){
 			if (cm[i] == CMAP_LAST) {
@@ -214,8 +237,13 @@ constexpr Pattern<L> opt(/* copy */ Pattern<L> pat) {
 	return pat;
 }
 
+template <int L1, int L2, int... Ls>
+constexpr auto or_(Pattern<L1> pat1, Pattern<L2> pat2, Pattern<Ls>... pats) {
+	return or_(or_(pat1, pat2), pats...);
+}
+
 template <int L1, int L2>
-constexpr Pattern<L1+L2> _or(/* copy */ Pattern<L1> pat1, /* copy */ Pattern<L2> pat2) {
+constexpr Pattern<L1+L2> or_(/* copy */ Pattern<L1> pat1, /* copy */ Pattern<L2> pat2) {
 	CharMap& p1cm0 = pat1.cmap[0];
 	Pattern<L2> pat2new = {_shift<L1>(pat2.cmap)};
 	const CharMap& p2cm0 = pat2new.cmap[0];
@@ -226,6 +254,11 @@ constexpr Pattern<L1+L2> _or(/* copy */ Pattern<L1> pat1, /* copy */ Pattern<L2>
 		}
 	}
 	return {_concat_array(pat1.cmap, pat2new.cmap)};
+}
+
+template <uchar CH>
+constexpr Pattern<1> not_char() {
+	return or_(chars_range<0, CH-1>(), chars_range<CH+1, NCHAR-1>());
 }
 
 template <int L>
