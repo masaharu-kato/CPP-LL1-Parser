@@ -52,46 +52,6 @@ constexpr auto _chars_range() {
 	return chars;
 }
 
-//constexpr std::array<uchar, NCHAR> _all_chars() {
-//	return _chars_range<0, NCHAR-1>();
-//}
-//
-//template <int L1, int L2>
-//constexpr std::array<uchar, L1 - L2> _minus_chars(std::array<uchar, L1> chs1, std::array<uchar, L2> chs2) {
-//	const std::array<uchar, L1 - L2> res;
-//	int i = 0;
-//	for (uchar ch1: chs1) {
-//		bool except = false;
-//		for (uchar ch2 : chs2) {
-//			if(ch1 == ch2) { except = true; break; }
-//		}
-//		if(!except) res[i++] = ch1;
-//	}
-//	return res;
-//}
-//
-//template <int L>
-//constexpr std::array<uchar, NCHAR - L> _not_chars(std::array<uchar, L> chs) {
-//	return _minus_chars(_all_chars(), chs);
-//}
-
-
-
-//struct Pattern {
-//	const char* name = nullptr;
-//};
-
-//template <int L>
-//struct Single : Pattern {
-//	const std::array<uchar, L> chars;
-//	constexpr Single(const std::array<uchar, L> chars, const char* name = nullptr)
-//		: chars(chars), Pattern{name} {}
-//};
-
-//struct CharMapPattern {
-//	const char* name;
-//	int next = 0;	//	Next CharMap Index
-//};
 using CharMap = std::array<int, NCHAR>;
 constexpr int CMAP_LAST = -1;	//	The token will ends on the current positon
 constexpr int CMAP_END = -2;	//	The token ended on the previous position
@@ -104,8 +64,12 @@ constexpr CharMap _charmap(int v) {
 }
 
 template <int L>
+struct CharMaps : std::array<CharMap, L>
+{};
+
+template <int L>
 struct Pattern {
-	std::array<CharMap, L> cmap;
+	CharMaps<L> cmaps;
 	const char* name;
 
 	std::string tokenize(const char*& ch) const {
@@ -113,7 +77,7 @@ struct Pattern {
 		std::string token = "";
 		int i_cm = 0;
 		while (*ch) {
-			int next_i_cm = cmap[i_cm][*ch];
+			int next_i_cm = cmaps[i_cm][*ch];
 			if (next_i_cm == CMAP_LAST) {
 				token += *ch++;
 				return token;
@@ -151,40 +115,15 @@ constexpr Pattern<1> chars_range() {
 
 
 template <int L1, int L2>
-constexpr std::array<CharMap, L2> _shift(std::array<CharMap, L2> cmap) {
-	std::array<CharMap, L2> new_cmap = cmap;
-	for (CharMap& cm : new_cmap) {
+constexpr CharMaps<L2> _shift(CharMaps<L2> cmaps) {
+	CharMaps<L2> new_cmaps = cmaps;
+	for (CharMap& cm : new_cmaps) {
 		for(int i=0; i<NCHAR; ++i){
 			if(cm[i] >= 0) cm[i] += L1;
 		}
 	}
-	return new_cmap;
+	return new_cmaps;
 }
-
-//template <typename... Ts>
-//constexpr auto concat(Ts... vs) {
-//	return _concat(to_paterns(vs...)...);
-//}
-//
-//template <int L0, typename... Ts>
-//constexpr auto to_patterns(Pattern<L0> v0, Ts... vs) {
-//	return {v0, to_patterns(vs...)...};
-//}
-//
-//template <int L0>
-//constexpr auto to_patterns(Pattern<L0> v0) {
-//	return {v0};
-//}
-//
-//template <int L0, typename... Ts>
-//constexpr auto to_patterns(std::array<uchar, L0> v0, Ts... vs) {
-//	return {single(v0), to_patterns(vs...)...};
-//}
-//
-//template <int L0>
-//constexpr auto to_patterns(std::array<uchar, L0> v0) {
-//	return {single(v0)};
-//}
 
 template <int L1, int L2, int... Ls>
 constexpr auto concat(Pattern<L1> pat1, Pattern<L2> pat2, Pattern<Ls>... pats) {
@@ -193,17 +132,17 @@ constexpr auto concat(Pattern<L1> pat1, Pattern<L2> pat2, Pattern<Ls>... pats) {
 
 template <int L1, int L2>
 constexpr Pattern<L1+L2> concat(/* copy */ Pattern<L1> cms1, /* copy */ Pattern<L2> cms2) {
-	for (CharMap& cm : cms1.cmap) {
+	for (CharMap& cm : cms1.cmaps) {
 		for(int i=0; i<NCHAR; ++i){
 			if (cm[i] == CMAP_LAST) {
 				cm[i] = L1;	//	First cmap of cms2
 			}
 			else if (cm[i] == CMAP_END) {
-				cm[i] = cms2.cmap[0][i];	//	Dest of first cmap of cms2
+				cm[i] = cms2.cmaps[0][i];	//	Dest of first cmap of cms2
 			}
 		}
 	}
-	return {_concat_array(cms1.cmap, _shift<L1>(cms2.cmap)), nullptr};
+	return {_concat_array(cms1.cmaps, _shift<L1>(cms2.cmaps))};
 }
 
 template <int L>
@@ -213,13 +152,13 @@ constexpr auto _concat(Pattern<L> pat) {
 
 template <int L>
 constexpr Pattern<L> repeat(/* copy */ Pattern<L> pat) {
-	for (CharMap& cm: pat.cmap) {
+	for (CharMap& cm: pat.cmaps) {
 		for (int i = 0; i < NCHAR; ++i) {
 			if (cm[i] == CMAP_LAST) {
 				cm[i] = 0;
 			}
 			else if (cm[i] == CMAP_END) {
-				cm[i] = pat.cmap[0][i];
+				cm[i] = pat.cmaps[0][i];
 			}
 		}
 	}
@@ -228,7 +167,7 @@ constexpr Pattern<L> repeat(/* copy */ Pattern<L> pat) {
 
 template <int L>
 constexpr Pattern<L> opt(/* copy */ Pattern<L> pat) {
-	CharMap& cm = pat.cmap[0];
+	CharMap& cm = pat.cmaps[0];
 	for (int i = 0; i < NCHAR; ++i) {
 		if (cm[i] == CMAP_NOT) {
 			cm[i] = CMAP_END;
@@ -244,16 +183,16 @@ constexpr auto or_(Pattern<L1> pat1, Pattern<L2> pat2, Pattern<Ls>... pats) {
 
 template <int L1, int L2>
 constexpr Pattern<L1+L2> or_(/* copy */ Pattern<L1> pat1, /* copy */ Pattern<L2> pat2) {
-	CharMap& p1cm0 = pat1.cmap[0];
-	Pattern<L2> pat2new = {_shift<L1>(pat2.cmap)};
-	const CharMap& p2cm0 = pat2new.cmap[0];
+	CharMap& p1cm0 = pat1.cmaps[0];
+	Pattern<L2> pat2new = {_shift<L1>(pat2.cmaps)};
+	const CharMap& p2cm0 = pat2new.cmaps[0];
 	for(int i=0; i<NCHAR; ++i){
 		if (   (p1cm0[i] <= CMAP_NOT && p2cm0[i] >= CMAP_END)
 			|| (p1cm0[i] <= CMAP_END && p2cm0[i] >= CMAP_LAST)) {
 			p1cm0[i] = p2cm0[i];
 		}
 	}
-	return {_concat_array(pat1.cmap, pat2new.cmap)};
+	return {_concat_array(pat1.cmaps, pat2new.cmaps)};
 }
 
 template <uchar CH>
@@ -263,7 +202,7 @@ constexpr Pattern<1> not_char() {
 
 template <int L>
 constexpr Pattern<L> named(const char* name, /* copy */ Pattern<L> pat) {
-	return {pat.cmap, name};
+	return {pat.cmaps, name};
 }
 
 
@@ -325,7 +264,7 @@ constexpr void _make_pattern_map(CharMap& cm0, int index) {}
 
 template <int L1, int... Ls>
 constexpr void _make_pattern_map(CharMap& cm0, int index, const Pattern<L1>& pat1, const Pattern<Ls>&... pats) {
-	const CharMap& pat1_cm0 = pat1.cmap[0];
+	const CharMap& pat1_cm0 = pat1.cmaps[0];
 	for(int i=0; i<NCHAR; ++i){
 		if (   (cm0[i] <= CMAP_NOT && pat1_cm0[i] >= CMAP_END)
 			|| (cm0[i] <= CMAP_END && pat1_cm0[i] >= CMAP_LAST)) {
