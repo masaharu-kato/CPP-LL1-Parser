@@ -3,74 +3,83 @@
 #include <vector>
 #include <string>
 #include <iostream>
+#include <algorithm>
 
 constexpr size_t NCHAR = 256;
 using uchar = unsigned char;
 
-template<typename T, typename... Ts>
-constexpr auto _sum(T&& t, Ts&&... ts) { return (std::forward<T>(t) + ... + std::forward<Ts>(ts)); }
-
-template <typename T, typename ...Args>
-constexpr auto _make_array(Args&&... args)
-{
-	return std::array<T, sizeof...(Args)>{args...};
-}
-
-template <typename T, size_t L1, size_t L2>
-constexpr std::array<T, L1 + L2> _concat_array(std::array<T, L1> a1, std::array<T, L2> a2) {
-	std::array<T, L1 + L2> a12{};
-	size_t i = 0;
-	for (auto v : a1) a12[i++] = v;
-	for (auto v : a2) a12[i++] = v;
-	return a12;
-}
-
-template <typename T, size_t L>
-constexpr std::array<T, L> _concat_array(std::array<T, L> a) {
-	return a;
-}
-
-template <typename T, size_t L1, size_t L2, size_t... Ls>
-constexpr std::array<T, _sum(L1, L2, Ls...)> _concat_array(std::array<T, L1> a1, std::array<T, L2> a2, std::array<T, Ls>... arrs) {
-	return _concat_array(_concat_array(a1, a2), arrs...);
-}
-
-
-template <typename ...Args>
-constexpr std::array<uchar, sizeof...(Args)> _chars(Args... args) {
-	return { (uchar)args... };
-}
-
-constexpr std::array<uchar, 1> _char(uchar ch) {
-	return { ch };
-}
-
-template <uchar CB, uchar CE>
-constexpr auto _chars_range() {
-	std::array<uchar, CE - CB + 1> chars{};
-	for (uchar ch = CB; ch <= CE; ++ch) chars[ch - CB] = ch;
-	return chars;
-}
-
-using CharMap = std::array<int, NCHAR>;
+using _CharMap = std::array<int, NCHAR>;
 constexpr int CMAP_LAST = -1;	//	The token will ends on the current positon
 constexpr int CMAP_END = -2;	//	The token ended on the previous position
 constexpr int CMAP_NOT = -3;	//	Invalid character for this token
 
-constexpr CharMap _charmap(int v) {
-	CharMap cmap{};
+constexpr _CharMap _init_charmap(int v) {
+	_CharMap cmap{};
 	for (size_t i = 0; i < NCHAR; ++i) cmap[i] = v;
 	return cmap;
 }
 
 template <size_t L>
+constexpr _CharMap _charmap(std::array<uchar, L> chars) {
+	_CharMap cm = _init_charmap(CMAP_NOT);
+	for (char ch : chars) cm[ch] = CMAP_LAST;
+	return cm;
+}
+
+template <typename... Args>
+constexpr _CharMap _charmap(Args... chs) {
+	return _charmap(std::array<uchar, sizeof...(Args)>{(uchar)chs...});
+}
+
+struct CharMap : _CharMap {
+
+	constexpr CharMap() : _CharMap() {}
+	constexpr CharMap(_CharMap chmap) : _CharMap(chmap) {}
+	constexpr CharMap(uchar ch) : _CharMap(_charmap(ch)) {}
+	template <typename... Args> 
+	constexpr CharMap(uchar ch, Args... chs) : _CharMap(_charmap(ch, chs...)) {}
+
+	static constexpr CharMap range(uchar chbeg, uchar chend) {
+		_CharMap cm = _init_charmap(CMAP_NOT);
+		for (size_t ch=chbeg; ch<=chend; ++ch) cm[ch] = CMAP_LAST;
+		return CharMap(cm);
+	}
+};
+
+template <size_t L>
 struct CharMaps : std::array<CharMap, L>
-{};
+{
+	template <typename... Args>
+	constexpr CharMaps(Args... args) : std::array<CharMap, L>{args...} {}
+
+	template <size_t _L>
+	constexpr CharMaps<L+_L> operator +(CharMaps<_L> cms) const {
+		CharMaps<L+_L> res{};
+		for(size_t i=0; i<L; ++i) res[i] = (*this)[i];
+		for(size_t i=0; i<_L; ++i) res[i+L] = cms[i];
+		return res;
+	}
+};
+
+using PatternName = const char*;
+constexpr PatternName NullPatternName = nullptr;
 
 template <size_t L>
 struct Pattern {
 	CharMaps<L> cmaps;
-	const char* name;
+	PatternName name;
+
+	constexpr Pattern(CharMaps<L> cmaps, PatternName name = NullPatternName) : cmaps(cmaps), name(name) {}
+
+	//constexpr Pattern(CharMap cmap) : Pattern(CharMaps<L>(cmap)) {}
+	//constexpr Pattern(_CharMap _cmap) : Pattern(CharMaps<L>(CharMap(_cmap))) {}
+	//constexpr Pattern(uchar ch) : Pattern(CharMaps<L>(CharMap(ch))) {}
+	template <typename... Args>
+	constexpr Pattern(Args... args) : Pattern(CharMaps<L>(CharMap(args...))) {}
+
+	static constexpr Pattern<1> range(uchar chbeg, uchar chend) {
+		return Pattern<1>(CharMap::range(chbeg, chend));
+	}
 
 	std::string tokenize(const char*& ch) const {
 		std::cout << "tokenize: " << name << "\n";
@@ -92,115 +101,106 @@ struct Pattern {
 		}
 		return token;
 	}
+
+	//	Concat
+	template <size_t _L>
+	constexpr Pattern<L + _L> operator ,(const Pattern<_L>& _pat) const {
+		CharMaps<L> new_cmaps = cmaps;
+		Pattern<_L> pat = _pat.template _shift<L>();
+		for (CharMap& cm : new_cmaps) {
+			for (size_t i = 0; i < NCHAR; ++i) {
+				if (cm[i] == CMAP_LAST) {
+					cm[i] = L;	//	First cmap of pat
+				}
+				else if (cm[i] == CMAP_END) {
+					cm[i] = pat.cmaps[0][i];	//	Dest of first cmap of pat
+				}
+			}
+		}
+		return { new_cmaps + pat.cmaps };
+	}
+
+	template <typename _T>
+	constexpr Pattern<L + 1> operator ,(_T patlike) const {
+		return operator ,(Pattern<1>(patlike));
+	}
+
+	//	Or
+	template <size_t _L>
+	constexpr Pattern<L + _L> operator |(const Pattern<_L>& _pat) const {
+		CharMaps<L> new_cmaps = cmaps;
+		CharMap& cm0 = new_cmaps[0];
+		Pattern<_L> pat = _pat.template _shift<L>();
+		const CharMap& pcm0 = pat.cmaps[0];
+		for (size_t i = 0; i < NCHAR; ++i) {
+			if ((cm0[i] <= CMAP_NOT && pcm0[i] >= CMAP_END)
+				|| (cm0[i] <= CMAP_END && pcm0[i] >= CMAP_LAST)) {
+				cm0[i] = pcm0[i];
+			}
+		}
+		return { new_cmaps + pat.cmaps };
+	}
+
+	template <typename _T>
+	constexpr Pattern<L + 1> operator |(_T patlike) const {
+		return operator |(Pattern<1>(patlike));
+	}
+
+	//	Repeat (1+)
+	constexpr Pattern<L> operator +() const {
+		Pattern<L> pat = *this;
+		for (CharMap& cm : pat.cmaps) {
+			for (size_t i = 0; i < NCHAR; ++i) {
+				if (cm[i] == CMAP_LAST) {
+					cm[i] = 0;
+				}
+				else if (cm[i] == CMAP_END) {
+					cm[i] = cmaps[0][i];
+				}
+			}
+		}
+		return pat;
+	}
+
+	//	Optional
+	constexpr Pattern<L> operator ~() {
+		Pattern<L> pat = *this;
+		CharMap& cm = pat.cmaps[0];
+		for (size_t i = 0; i < NCHAR; ++i) {
+			if (cm[i] == CMAP_NOT) {
+				cm[i] = CMAP_END;
+			}
+		}
+		return pat;
+	}
+
+	//	Repeat (0+)
+	constexpr Pattern<L> operator *() const {
+		return ~+*this;
+	}
+
+	template <size_t _L>
+	constexpr Pattern<L> _shift() const {
+		Pattern<L> pat = *this;
+		for (CharMap& cm : pat.cmaps) {
+			for (size_t i = 0; i < NCHAR; ++i) {
+				if (cm[i] >= 0) cm[i] += _L;
+			}
+		}
+		return pat;
+	}
+
 };
 
-template <size_t L>
-constexpr Pattern<1> _pattern(std::array<uchar, L> chars) {
-	CharMap cm = _charmap(CMAP_NOT);
-	for (char ch : chars) cm[ch] = CMAP_LAST;
-	return { {cm} };
-}
+//template <typename _T, size_t L>
+//constexpr Pattern<L + 1> operator ,(_T patlike, Pattern<L> pat) {
+//	return Pattern<1>(patlike) , pat;
+//}
 
-template <typename ...Args>
-constexpr Pattern<1> chars(Args... args) {
-	return _pattern(_chars(args...));
-}
-
-constexpr Pattern<1> char_(uchar ch) {
-	return _pattern(_char(ch));
-}
-
-template <uchar CB, uchar CE>
-constexpr Pattern<1> chars_range() {
-	return _pattern(_chars_range<CB, CE>());
-}
-
-
-template <size_t L1, size_t L2>
-constexpr CharMaps<L2> _shift(CharMaps<L2> cmaps) {
-	CharMaps<L2> new_cmaps = cmaps;
-	for (CharMap& cm : new_cmaps) {
-		for (size_t i = 0; i < NCHAR; ++i) {
-			if (cm[i] >= 0) cm[i] += L1;
-		}
-	}
-	return new_cmaps;
-}
-
-template <size_t L1, size_t L2, size_t... Ls>
-constexpr auto concat(Pattern<L1> pat1, Pattern<L2> pat2, Pattern<Ls>... pats) {
-	return concat(concat(pat1, pat2), pats...);
-}
-
-template <size_t L1, size_t L2>
-constexpr Pattern<L1 + L2> concat(/* copy */ Pattern<L1> cms1, /* copy */ Pattern<L2> cms2) {
-	for (CharMap& cm : cms1.cmaps) {
-		for (size_t i = 0; i < NCHAR; ++i) {
-			if (cm[i] == CMAP_LAST) {
-				cm[i] = L1;	//	First cmap of cms2
-			}
-			else if (cm[i] == CMAP_END) {
-				cm[i] = cms2.cmaps[0][i];	//	Dest of first cmap of cms2
-			}
-		}
-	}
-	return { _concat_array(cms1.cmaps, _shift<L1>(cms2.cmaps)) };
-}
-
-template <size_t L>
-constexpr auto _concat(Pattern<L> pat) {
-	return pat;
-}
-
-template <size_t L>
-constexpr Pattern<L> repeat(/* copy */ Pattern<L> pat) {
-	for (CharMap& cm : pat.cmaps) {
-		for (size_t i = 0; i < NCHAR; ++i) {
-			if (cm[i] == CMAP_LAST) {
-				cm[i] = 0;
-			}
-			else if (cm[i] == CMAP_END) {
-				cm[i] = pat.cmaps[0][i];
-			}
-		}
-	}
-	return pat;
-}
-
-template <size_t L>
-constexpr Pattern<L> opt(/* copy */ Pattern<L> pat) {
-	CharMap& cm = pat.cmaps[0];
-	for (size_t i = 0; i < NCHAR; ++i) {
-		if (cm[i] == CMAP_NOT) {
-			cm[i] = CMAP_END;
-		}
-	}
-	return pat;
-}
-
-template <size_t L1, size_t L2, size_t... Ls>
-constexpr auto or_(Pattern<L1> pat1, Pattern<L2> pat2, Pattern<Ls>... pats) {
-	return or_(or_(pat1, pat2), pats...);
-}
-
-template <size_t L1, size_t L2>
-constexpr Pattern<L1 + L2> or_(/* copy */ Pattern<L1> pat1, /* copy */ Pattern<L2> pat2) {
-	CharMap& p1cm0 = pat1.cmaps[0];
-	Pattern<L2> pat2new = { _shift<L1>(pat2.cmaps) };
-	const CharMap& p2cm0 = pat2new.cmaps[0];
-	for (size_t i = 0; i < NCHAR; ++i) {
-		if ((p1cm0[i] <= CMAP_NOT && p2cm0[i] >= CMAP_END)
-			|| (p1cm0[i] <= CMAP_END && p2cm0[i] >= CMAP_LAST)) {
-			p1cm0[i] = p2cm0[i];
-		}
-	}
-	return { _concat_array(pat1.cmaps, pat2new.cmaps) };
-}
-
-template <uchar CH>
-constexpr Pattern<1> not_char() {
-	return or_(chars_range<0, CH - 1>(), chars_range<CH + 1, NCHAR - 1>());
-}
+//template <typename _T, size_t L>
+//constexpr Pattern<L + 1> operator |(_T patlike, Pattern<L> pat) {
+//	return Pattern<1>(patlike) | pat;
+//}
 
 template <size_t L>
 constexpr Pattern<L> named(const char* name, /* copy */ Pattern<L> pat) {
@@ -229,13 +229,13 @@ struct Patterns<L0> {
 
 	std::string tokenize(int i_pat, const char*& ch) const {
 		if (!i_pat) return pat0.tokenize(ch);
-		throw std::exception("Index out of range.");
+		throw std::runtime_error("Index out of range.");
 	}
 };
 
 template <size_t... Ls>
 struct PatternMap : Patterns<Ls...> {
-	CharMap cm0 = _charmap(CMAP_NOT);
+	CharMap cm0 = _init_charmap(CMAP_NOT);
 	constexpr PatternMap(const CharMap& cm0, const Pattern<Ls>&... pats)
 		: cm0(cm0), Patterns<Ls...>(pats...) {}
 
@@ -257,7 +257,7 @@ struct PatternMap : Patterns<Ls...> {
 
 template <size_t... Ls>
 constexpr PatternMap<Ls...> make_pattern_map(const Pattern<Ls>&... pats) {
-	CharMap cm0 = _charmap(CMAP_NOT);
+	CharMap cm0 = _init_charmap(CMAP_NOT);
 	_make_pattern_map(cm0, 0, pats...);
 	return PatternMap<Ls...>(cm0, pats...);
 }
