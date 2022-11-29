@@ -133,11 +133,13 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="tokenize-main.cpp" />
+    <ClCompile Include="try-array.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="sample.json" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="cexpr_array_utils.h" />
     <ClInclude Include="tokenize.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

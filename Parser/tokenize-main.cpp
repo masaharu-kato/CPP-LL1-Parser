@@ -4,12 +4,12 @@
 //	Rules
 //	
 //constexpr auto cmap = CharMap('A');
-//constexpr auto cmaps = CharMaps<1>(cmap);
-//constexpr auto CHARS_TEST = Pattern<1>(cmaps);
-//constexpr auto CHARS_TEST = Pattern<1>('A');
-constexpr auto CHARS_UPPER_ALPHA = Pattern<1>::range('A', 'Z');
-constexpr auto CHARS_LOWER_ALPHA = Pattern<1>::range('a', 'z');
-constexpr auto CHARS_DIGIT = Pattern<1>::range('0', '9');
+//constexpr auto cmaps = Pattern<1>(cmap);
+//constexpr auto CHARS_TEST = NamedPattern<1>(cmaps);
+//constexpr auto CHARS_TEST = NamedPattern<1>('A');
+constexpr auto CHARS_UPPER_ALPHA = char_range('A', 'Z');
+constexpr auto CHARS_LOWER_ALPHA = char_range('a', 'z');
+constexpr auto CHARS_DIGIT = char_range('0', '9');
 constexpr auto CHARS_ALPHA = CHARS_UPPER_ALPHA | CHARS_LOWER_ALPHA;
 constexpr auto CHARS_ALWORD = CHARS_ALPHA | '_';
 constexpr auto CHARS_ALNUM = CHARS_DIGIT | CHARS_ALPHA;
@@ -18,9 +18,9 @@ constexpr auto CHARS_SYMBOL = Pattern<1>('+', '-', '*', '/', '%', '&', '|', '^',
 constexpr auto CHARS_BRACKET = Pattern<1>('(', ')', '[', ']', '{', '}');
 constexpr auto CHARS_ESCAPE = Pattern<1>('\\');
 constexpr auto CHARS_DQUOTE = Pattern<1>('"');
-constexpr auto CHARS_NON_DQUOTE = Pattern<1>::range(1, '"'-1) | Pattern<1>::range('"'+1, '\\'-1) | Pattern<1>::range('\\'+1, 127);
+constexpr auto CHARS_NON_DQUOTE = char_range(1, '"'-1) | char_range('"'+1, '\\'-1) | char_range('\\'+1, 127);
 constexpr auto CHARS_SQUOTE = Pattern<1>('\'');
-constexpr auto CHARS_NON_SQUOTE = Pattern<1>::range(1, '\"'-1) | Pattern<1>::range('\"'+1, '\\'-1) | Pattern<1>::range('\\'+1, 127);
+constexpr auto CHARS_NON_SQUOTE = char_range(1, '\"'-1) | char_range('\"'+1, '\\'-1) | char_range('\\'+1, 127);
 
 constexpr auto BRACKET = named("BRACKET", CHARS_BRACKET);
 constexpr auto SYMBOL  = named("SYMBOL", CHARS_SYMBOL);
